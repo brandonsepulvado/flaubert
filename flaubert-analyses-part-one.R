@@ -6,6 +6,11 @@ library(stringr)
 library(dplyr)
 library(tidytext)
 library(tokenizers)
+library(SnowballC)
+
+###
+### data preparation
+###
 
 # get data from gutenbergr
 gutenberg_metadata
@@ -31,26 +36,37 @@ stopwords <- get_stopwords(language = "fr",
 # more difficult
 texts$text <- str_replace_all(texts$text, "[[:punct:]]",
                               " ")
+  # this puts a space that will be removed and 
+  # isolated contracted stop words.
 
-# stem words
-tokenized <- tokenize_word_stems(texts$text,
-                    language = "french", 
-                    stopwords = stopwords,
-                    simplify = TRUE)
-
-# put list elements in respective texts cell
-texts <- texts %>% 
-  mutate(tokenized = NA)
-for (i in 1:nrow(texts)) {
-  if (length(tokenized[[i]] > 0)) {
-    texts$tokenized[i] <- paste(tokenized[[i]], 
-                                collapse = " ")
-  } else {
-    texts$tokenized[i] <- " "
-  }
-}
-
-# tidy the texts
+# using just snowballC
 tidy.flaubert <- texts %>% 
-  unnest_tokens(word, tokenized) %>% 
-  anti_join(stopwords)
+  unnest_tokens(word, text) %>% 
+  mutate(stem = wordStem(word, language = "french")) %>% 
+  anti_join(stopwords, by = c("stem" = "word"))
+
+# seem to be many single letter cells
+# count them to possibly remove (keeping
+# a, as it is a verb)
+tidy.flaubert %>% 
+  mutate(stem.length = str_length(stem)) %>% 
+  filter(stem.length == 1 & stem != "a") %>% 
+  summarise(n())
+  # 6131 such cases, and many seem to be the result 
+  # of parsing problem. drop for now.
+
+# because I want to do further investigation,
+# I am going to say these cases into an object
+# and then use anti_join() rather than filtering.
+singles <- tidy.flaubert %>% 
+  mutate(stem.length = str_length(stem)) %>% 
+  filter(stem.length == 1 & stem != "a")
+
+tidy.flaubert <- tidy.flaubert %>% 
+  anti_join(singles)
+
+
+
+###
+### basic analyses
+###
