@@ -7,6 +7,7 @@ library(dplyr)
 library(tidytext)
 library(tokenizers)
 library(SnowballC)
+library(stopwords)
 
 ###
 ### data preparation
@@ -29,8 +30,22 @@ ids <- gutenberg_metadata %>%
 texts <- gutenberg_download(ids, meta_fields = "title")
 
 # need french stop words to tidy texts
-stopwords <- get_stopwords(language = "fr", 
+stopwords.snowball <- get_stopwords(language = "fr", 
                           source = "snowball")
+  # snowball is the only source in the stopwords
+  # package with french option
+
+# expand stopword dictionary
+stopwords.exp <- as.tbl(read.table("stopwords-fr.txt")) %>% 
+  rename(word = V1) %>% 
+  mutate(lexicon = "stopwords-fr")
+stopwords.exp$word <- as.character(stopwords.exp$word)
+
+# combine unique stopwords into single tbl
+stopwords.combined <- bind_rows(stopwords.snowball,
+                                stopwords.exp) %>% 
+  distinct(word)
+
 
 # remove punctuation that makes cleaning french
 # more difficult
@@ -43,7 +58,7 @@ texts$text <- str_replace_all(texts$text, "[[:punct:]]",
 tidy.flaubert <- texts %>% 
   unnest_tokens(word, text) %>% 
   mutate(stem = wordStem(word, language = "french")) %>% 
-  anti_join(stopwords, by = c("stem" = "word"))
+  anti_join(stopwords.combined)
 
 # seem to be many single letter cells
 # count them to possibly remove (keeping
@@ -65,8 +80,19 @@ singles <- tidy.flaubert %>%
 tidy.flaubert <- tidy.flaubert %>% 
   anti_join(singles)
 
+# make works a factor variable
+tidy.flaubert$title <- as.factor(tidy.flaubert$title)
+
 
 
 ###
 ### basic analyses
 ###
+
+# let's count the overall stem occurence 
+tidy.flaubert %>% 
+  count(stem, sort = TRUE) %>% 
+  head(n = 20)
+  # not good: too many dans, si, bien, etc
+
+
